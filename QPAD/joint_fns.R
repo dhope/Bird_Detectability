@@ -68,7 +68,7 @@ cmulti.fit.joint <- function (Yarray, # Array with dimensions (nsurvey x nrint x
   
   # Function to calculate multinomial cell probabilities for each point count
   nll.fun <- function(params) {
-    
+    # browser()
     tau <- poisson("log")$linkinv(drop(X1 %*% params[1:length(tau_params)]))
     phi <- poisson("log")$linkinv(drop(X2 %*% params[(length(tau_params)+1):length(params)]))
     
@@ -81,6 +81,7 @@ cmulti.fit.joint <- function (Yarray, # Array with dimensions (nsurvey x nrint x
       
       # Calculate CDF and p
       f_d = function(dmax){
+        # browser()
         integrand = substitute(2*pi*dmax *(1-exp(-phi*tmax*exp(-dmax^2/tau^2))),
                                list(phi = phi_k,tau = tau_k,tmax = tmax))
         eval(integrand)
@@ -122,8 +123,8 @@ cmulti.fit.joint <- function (Yarray, # Array with dimensions (nsurvey x nrint x
       
       # Normalize
       p_matrix = p_matrix/sum(p_matrix)
-      
-      nll[k] <- logdmultinom(Y, Ysum[k], p_matrix)
+      # if(k==1)browser()
+      nll[k] <- logdmultinomCPP(as.matrix(Y), Ysum[k], p_matrix)
     } # close loop on k
     
     nll <- -sum(nll)
