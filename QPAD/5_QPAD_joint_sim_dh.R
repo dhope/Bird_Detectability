@@ -10,11 +10,11 @@
 library(tidyverse)
 library(ggpubr)
 
-rm(list=ls())
+# rm(list=ls())
 
 set.seed(999)
 
-setwd("~/1_Work/Bird_Detectability/QPAD") # <- set to wherever scripts are stored
+# setwd("~/1_Work/Bird_Detectability/QPAD") # <- set to wherever scripts are stored
 source("joint_fns.R")
 
 # ----------------------------------------------------------
@@ -196,12 +196,22 @@ fit <- cmulti.fit.joint(Yarray_fit,
 )
 end <- Sys.time()
 print(end-start) # 2.3 min
+start <- Sys.time()
+fitcpp <- cmulti_fit_joint(Yarray_fit,
+                        rarray_fit,
+                        tarray_fit,
+                        X1 = X1_fit, # Design matrix for tau
+                        X2 = X2_fit  # Design matrix for phi
+)
+end <- Sys.time()
+print(end-start) # 2.3 min
 
 # ******************************************
 # Extract/inspect estimates
 # ******************************************
 
 fit$coefficients
+fitcpp$coefficients
 
 # -----------------
 # Estimates of tau
