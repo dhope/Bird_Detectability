@@ -89,7 +89,7 @@ double nll_fun(NumericVector params, arma::mat X1, arma::mat X2,
     for(int j = 0; j < ntint[k]; ++j){
       double tmax = (tarray(k,j)); //max Not sure why R has max of a single value?
       for(int i = 0; i < nrint[k]; ++i){
-        // std::cout<< "kji: "<< k <<"\t"<<j<<"\t"<<i << std::endl;
+      // std::cout<< "kji: "<< k <<"\t"<<j<<"\t"<<i << std::endl;
         double upper_r_t = rarray(k,i);
         if(upper_r_t == R_PosInf) upper_r_t = max_r[k];
         const double upper_r = upper_r_t;
@@ -110,32 +110,37 @@ double nll_fun(NumericVector params, arma::mat X1, arma::mat X2,
 
       }
     }
-
+    
     // # Difference across distance bins
-    NumericMatrix tmp1 = CDF_binned;
+    NumericMatrix tmp1(clone(CDF_binned));
         if (tmp1.nrow()>1){
-          for (int i=1; i < (nrint[i]-1);++i){// in 2:nrint[k]){
-            tmp1(i,_) = CDF_binned(i,_) - CDF_binned(i-1,_);
+          for (int i=1; i < (nrint[k]);++i){// in 2:nrint[k]){
+            for(int j = 0; j < tmp1.ncol(); ++j){
+            tmp1(i,j) = CDF_binned(i,j) - CDF_binned(i-1,j);
+          }
           }
         }
-
-
-    // # Difference across time bins
-        NumericMatrix p_matrix = tmp1;
-        double sum_p_matrix =0;
-
+      // # Difference across time bins
+        NumericMatrix p_matrix(clone(tmp1));
         if (p_matrix.ncol()>1){
-          for (int j=0; j < (ntint[k]-1); ++j){// in 2:ntint[k]){
+          for (int j=1; j < (ntint[k]); ++j){// in 2:ntint[k]){
             for(int u=0; u< p_matrix.nrow(); ++u){
-            p_matrix(u,j) = tmp1(u,j) - tmp1(u,j-1);
+              p_matrix(u,j) = tmp1(u,j) - tmp1(u,(j-1));
+             
             }
-            for( int r =0; r<p_matrix.nrow(); ++r){
-              sum_p_matrix += p_matrix(r,j);
-            }
+          }
+          
+        }
+        
+        double sum_p_matrix =0;
+        for (int j=0; j < p_matrix.ncol(); ++j){// in 2:ntint[k]){
+          for(int u=0; u< p_matrix.nrow(); ++u){
+            sum_p_matrix += p_matrix(u,j);
           }
         }
         
-        NumericMatrix p_matrix_norm = p_matrix;
+        
+        NumericMatrix p_matrix_norm(clone(p_matrix));
         // # Normalize
         for(int i = 0; i < p_matrix.nrow(); ++i ){
           for(int j = 0; j < p_matrix.ncol(); ++j ){
@@ -143,14 +148,18 @@ double nll_fun(NumericVector params, arma::mat X1, arma::mat X2,
           }
         }
         
-        
-        // std::cout<<"Y: "<< Y << std::endl;
+        // return(Rcpp::List::create(
+        //     Named("CDF_binned")=CDF_binned,
+        //     Named("tmp1") = tmp1,
+        //     Rcpp::Named("p_matrix") = p_matrix,
+        //     Named("normed") = p_matrix_norm));
+      // std::cout<<"Y: "<< Y << std::endl;
         // std::cout<< "Ysum: "<< Ysum[k] << std::endl;
-        // std::cout<< "Pmatrix: "<<p_matrix_norm << std::endl;
+      // std::cout<< "Pmatrix: "<<p_matrix_norm << std::endl;
         
         nll[k] = logdmultinomCPP(Y, Ysum[k], p_matrix_norm);
     }// # close loop on k
-    // std::cout << "nll"<< nll << std::endl;
+  // std::cout << "nll"<< nll << std::endl;
       double nll_sum =0;// <- -sum(nll)
   for(int i = 0; i< nsurvey; ++i){
     nll_sum -= nll[i];

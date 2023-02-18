@@ -97,11 +97,12 @@ cmulti.fit.joint <- function (Yarray, # Array with dimensions (nsurvey x nrint x
         for (i in 1:nrint[k]){
           upper_r = rarray[k,i]
           if (upper_r == Inf) upper_r = max_r[k]
-          
+          # browser()
           # Integrate from 1 m from the observer
           CDF_binned[i,j] = integrate(f_d,lower=0.01,
                                       upper = upper_r, 
                                       subdivisions = 500)$value
+          # print(CDF_binned[i,j])
         }
       }
       
@@ -120,15 +121,19 @@ cmulti.fit.joint <- function (Yarray, # Array with dimensions (nsurvey x nrint x
           p_matrix[,j] <- tmp1[,j] - tmp1[,j-1]
         }
       }
-      
+     # return(CDF_binned);
+      # return(list(CDF_binned, tmp1, p_matrix))
       # Normalize
       p_matrix = p_matrix/sum(p_matrix)
+     
       # if(k==1)browser()
       nll[k] <- logdmultinom(Y, Ysum[k], p_matrix)
     } # close loop on k
     
+    # browser()
     nll <- -sum(nll)
-    if (nll %in% c(NA, NaN, Inf, -Inf)) nlimit[2] else nll
+    if (nll %in% c(NA, NaN, Inf, -Inf)) browser()#nlimit[2] 
+    else nll
   }
   
   nlimit <- c(.Machine$double.xmin, .Machine$double.xmax)^(1/3)
@@ -199,7 +204,7 @@ calculate.offsets <- function (fit,
     
     # Calculate CDF and p
     f_d = function(dmax){
-      print(dmax)
+      # print(dmax)
       integrand = substitute(2*pi*dmax *(1-exp(-phi*tmax*exp(-dmax^2/tau^2))),
                              list(phi = phi_k,tau = tau_k,tmax = tmax))
       eval(integrand)

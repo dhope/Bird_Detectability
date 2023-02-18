@@ -15,6 +15,8 @@ library(ggpubr)
 set.seed(999)
 
 # setwd("~/1_Work/Bird_Detectability/QPAD") # <- set to wherever scripts are stored
+Rcpp::sourceCpp("joing_funs_dh_testing.cpp")
+source("joint_fns_cpp.R")
 source("joint_fns.R")
 
 # ----------------------------------------------------------
@@ -218,13 +220,16 @@ fitcpp$coefficients
 # -----------------
 
 tau_est <- exp(X1 %*% fit$coefficients[1:2])
+tau_estcpp <- exp(X1 %*% fitcpp$coefficients[1:2])
 
 ggplot()+
   geom_point(aes(x = covariate.FC,y=tau_est, col = "Estimate"))+
+  geom_point(aes(x = covariate.FC,y=tau_estcpp, col = "Estimate CPP"),
+             alpha = 0.5, size =0.5)+
   geom_line(aes(x = covariate.FC,y=tau, col = "Truth"))+
   xlab("Percent forest cover")+
   ylab("Tau")+
-  scale_color_manual(values=c("dodgerblue","black"), name = "")+
+  scale_color_manual(values=c("dodgerblue",'grey', "black"), name = "")+
   ggtitle("Predicted vs True Tau")+
   theme_bw()
 
@@ -233,13 +238,16 @@ ggplot()+
 # -----------------
 
 phi_est <- exp(X2 %*% fit$coefficients[3:5])
+phi_est_cpp <- exp(X2 %*% fitcpp$coefficients[3:5])
 
 ggplot()+
   geom_point(aes(x = covariate.DOY,y=phi_est, col = "Estimate"))+
+  geom_point(aes(x = covariate.DOY,y=phi_est_cpp, col = "Estimate CPP"),
+             size = 0.5)+
   geom_line(aes(x = covariate.DOY,y=phi, col = "Truth"))+
   xlab("Day of year")+
   ylab("Phi")+
-  scale_color_manual(values=c("dodgerblue","black"), name = "")+
+  scale_color_manual(values=c("dodgerblue","grey","black"), name = "")+
   ggtitle("Predicted vs True Phi")+
   theme_bw()
 
