@@ -1,3 +1,7 @@
+#' ---
+#' title: "CPP of Iles Multivariate Offsets"
+#' output: pdf_document
+#' ---
 # **************************************
 # Simulate 2000 point counts that were collected under 30 different protocols
 #
@@ -15,8 +19,8 @@ library(ggpubr)
 set.seed(999)
 
 # setwd("~/1_Work/Bird_Detectability/QPAD") # <- set to wherever scripts are stored
-Rcpp::sourceCpp("joing_funs_dh_testing.cpp")
-source("joint_fns_cpp.R")
+Rcpp::sourceCpp("nll_fun.cpp")
+source("cmulti_fit_joint_cpp.R")
 source("joint_fns.R")
 
 # ----------------------------------------------------------
@@ -171,7 +175,7 @@ for (k in 1:nsurvey){
   
   Y # Data to analyze
   Yarray[k,1:nrint,1:ntint] <- Y
-  print(k)
+  # print(k)
   
   rarray[k,1:length(rint)] <- rint
   tarray[k,1:length(tint)] <- tint
@@ -263,27 +267,39 @@ log_offsets <- calculate.offsets(fit,
                                    X1 = X1,
                                    X2 = X2)
 
+log_offsetscpp <- calculate.offsets(fitcpp,
+                                 rarray = rarray,
+                                 tarray = tarray,
+                                 X1 = X1,
+                                 X2 = X2)
+
 # ******************************************
 # Fit density model to point count data, using GLM with effect of mean annual temperature
 # ******************************************
 
 dat <- data.frame(Y = apply(Yarray,1,sum,na.rm = TRUE),
                   zMAT = scale(covariate.MAT),
-                  log_off = log_offsets)
+                  log_off = log_offsets,
+                  log_offcpp = log_offsetscpp)
 
 glm1 <- glm(Y ~ zMAT + I(zMAT^2) + offset(log_off), family = poisson(link="log"), data = dat)
+glm2 <- glm(Y ~ zMAT + I(zMAT^2) + offset(log_offcpp), family = poisson(link="log"), data = dat)
 
 # Predict density at each location
 pred_df <- dat
 pred_df$log_off <- 0 # Set offset to zero (i.e., remove detectability effects)
+pred_df$log_offcpp <- 0 # Set offset to zero (i.e., remove detectability effects)
 Dhat <- predict(glm1, newdata = pred_df, type = "response")
+Dhatcpp <- predict(glm2, newdata = pred_df, type = "response")
 
 # Estimated density at each survey location (after correcting for detectability)
 ggplot()+
   geom_point(aes(x = covariate.MAT,y=Dhat, col = "Estimate"))+
+  geom_point(aes(x = covariate.MAT,y=Dhatcpp, col = "Estimate Cpp"),
+             size = 0.2)+
   geom_line(aes(x = covariate.MAT,y=Density, col = "Truth"))+
   xlab("Mean Annual Temperature")+
   ylab("Density (birds/ha)")+
-  scale_color_manual(values=c("dodgerblue","black"), name = "")+
+  scale_color_manual(values=c("dodgerblue",'grey',"black"), name = "")+
   ggtitle("Predicted vs True Density")+
   theme_bw()
