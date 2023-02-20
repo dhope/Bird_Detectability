@@ -9,7 +9,7 @@ cmulti_fit_joint <- function (Yarray, # Array with dimensions (nsurvey x nrint x
                               phi_inits = NULL,
                               method = "Nelder-Mead", ...) {
   
- 
+
   
   input_data <- list(Yarray = Yarray,
                      rarray = rarray,
@@ -66,7 +66,6 @@ cmulti_fit_joint <- function (Yarray, # Array with dimensions (nsurvey x nrint x
   
   inits <- c(tau_inits,phi_inits)
 
-
   # browser()
   nlimit <- c(.Machine$double.xmin, .Machine$double.xmax)^(1/3)
   Yarray_x = aperm(Yarray, c(2,3,1))
@@ -75,15 +74,22 @@ cmulti_fit_joint <- function (Yarray, # Array with dimensions (nsurvey x nrint x
                Yarray = Yarray_x,tarray= tarray, rarray=rarray, 
                nrint= nrint, ntint= ntint, max_r= max_r, Ysum=Ysum,nlimit= nlimit)
   
+  ## robust matrix inversion (from detect pacakge)
+  .solvenear <- function(x) {
+    xinv <- try(solve(x), silent = TRUE)
+    if (inherits(xinv, "try-error"))
+      xinv <- as.matrix(solve(Matrix::nearPD(x)$mat))
+    xinv
+  }
+  
   rval <- list(input_data = input_data,
                coefficients = res$par, 
-               #vcov = try(.solvenear(res$hessian)), 
+               vcov = try(.solvenear(res$hessian)), 
                loglik = -res$value)
   
-  #if (inherits(rval$vcov, "try-error")) rval$vcov <- matrix(NA, length(rval$coefficients), length(rval$coefficients))
+  if (inherits(rval$vcov, "try-error")) rval$vcov <- matrix(NA, length(rval$coefficients), length(rval$coefficients))
   rval$coefficients <- unname(rval$coefficients)
   rval$vcov <- unname(rval$vcov)
   rval$results <- res
   rval
 }
-

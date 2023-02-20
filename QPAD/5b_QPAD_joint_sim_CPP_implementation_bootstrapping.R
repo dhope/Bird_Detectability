@@ -1,5 +1,9 @@
+#' ---
+#' title: "CPP of Iles Multivariate Offsets"
+#' output: pdf_document
+#' ---
 # **************************************
-# Simulate 5000 point counts that were collected under 30 different protocols
+# Simulate 2000 point counts that were collected under 30 different protocols
 #
 # Survey-level density has a quadratic relationship with a 'mean annual temperature' covariate
 #
@@ -9,6 +13,7 @@
 
 library(tidyverse)
 library(ggpubr)
+library(Rcpp)
 
 rm(list=ls())
 
@@ -16,6 +21,8 @@ rm(list=ls())
 
 setwd("~/1_Work/Bird_Detectability/QPAD") # <- set to wherever scripts are stored
 
+Rcpp::sourceCpp("nll_fun.cpp")
+source("cmulti_fit_joint_cpp.R")
 source("joint_fns.R")
 
 # ----------------------------------------------------------
@@ -23,17 +30,17 @@ source("joint_fns.R")
 # ----------------------------------------------------------
 
 # Number of point counts / survey locations to simulate
-nsurvey = 5000 
+nsurvey = 1000 
 
 # Mean annual temperature at each survey
 covariate.MAT <- runif(nsurvey,0,25)
 
 # Parameters controlling the quadratic
 A <- -0.01     # steepness
-k <- log(0.5)  # maximum of quadratic  
+k <- log(1)  # maximum of quadratic  
 h <- 10        # x location of vertex
 
-# Density at each survey location
+# Phi for each survey
 Density <- exp(A*(covariate.MAT-h)^2 + k)
 plot(Density~covariate.MAT)
 
@@ -42,11 +49,11 @@ plot(Density~covariate.MAT)
 # ----------------------------------------------------------
 
 covariate.FC <- plogis(rnorm(nsurvey,1,2))
-tau_betas <- c(log(1.5),-3)
+tau_betas <- c(log(1),-1)
 
 # Tau for each survey
 tau <- exp(tau_betas[1] + tau_betas[2]*covariate.FC) 
-plot(tau~covariate.FC)
+plot(tau~covariate.FC, ylim=c(0,max(tau)))
 
 # Design matrix for tau
 zFC <- scale(covariate.FC)
@@ -60,13 +67,13 @@ colnames(X1) <- c("tau_int","tau_b1")
 covariate.DOY <- round(runif(nsurvey,120,160))
 
 # Parameters controlling the quadratic
-A <- -0.01     # steepness
+A <- -0.002     # steepness
 k <- log(1.5)  # maximum of quadratic  
-h <- 140       # x location of vertex
+h <- 130       # x location of vertex
 
 # Phi for each survey
 phi <- exp(A*(covariate.DOY-h)^2 + k)
-plot(phi~covariate.DOY)
+plot(phi~covariate.DOY, ylim=c(0,max(phi)))
 
 # Design matrix for phi (scaled covariate for better model convergence)
 zDOY <- scale(covariate.DOY)
@@ -142,7 +149,7 @@ for (k in 1:nsurvey){
     # Simulate bird cues, based on phi_true
     # ------------------------------------
     
-    cues <- matrix(NA, nrow=N, ncol = 150)
+    cues <- matrix(NA, nrow=N, ncol = 50)
     for (bird_id in 1:N) cues[bird_id,] <- cumsum(rexp(ncol(cues),phi_true))
     cues <- cues %>% 
       reshape2::melt() %>% 
@@ -179,93 +186,95 @@ for (k in 1:nsurvey){
     Yarray[k,1:nrint,1:ntint] <- 0
   }
   
-  print(k)
+  # print(k)
   
 }
 
-# ******************************************
-# Fit detectability model to simulated data
-# ******************************************
+Ysum <- apply(Yarray,1,sum,na.rm=TRUE)
+sum(Ysum>0)
 
-start <- Sys.time()
-fit <- cmulti.fit.joint(Yarray,
-                        rarray,
-                        tarray,
-                        X1 = X1, # Design matrix for tau
-                        X2 = X2  # Design matrix for phi
-)
-end <- Sys.time()
-print(end-start) # 
+# -------------------------------------------------
+# Bootstrap
+# -------------------------------------------------
 
-# ******************************************
-# Extract/inspect estimates
-# ******************************************
+bootreps <- 100
+Dhat_boot <- tau_boot <- phi_boot <- matrix(NA,nrow=bootreps,ncol=500)
 
-fit$coefficients
+for (b in 1:bootreps){
 
-# -----------------
-# Estimates of tau
-# -----------------
+  bootsamps <- sample(1:nsurvey,nsurvey,replace=TRUE)
+  Yboot <- Yarray[bootsamps,,]
+  rboot <- rarray[bootsamps,]
+  tboot <- tarray[bootsamps,]
+  X1boot <- X1[bootsamps,]
+  X2boot <- X2[bootsamps,]
+  
+  start <- Sys.time()
+  fit <- cmulti_fit_joint(Yboot,
+                          rboot,
+                          tboot,
+                          X1 = X1boot, # Design matrix for tau
+                          X2 = X2boot  # Design matrix for phi
+  )
+  end <- Sys.time()
+  print(end-start)
+  log_offsets <- calculate.offsets(fit,
+                                   rarray = rboot,
+                                   tarray = tboot,
+                                   X1 = X1boot,
+                                   X2 = X2boot)
+  
+  # Predictions of tau across range of FC
+  FCmn <- mean(covariate.FC)
+  FCsd <- sd(covariate.FC)
+  predFC <- seq(min(covariate.FC),max(covariate.FC),length.out = 500)
+  predFCz <- (predFC-FCmn)/FCsd
+  predX1 <- model.matrix(~predFCz)
+  tauhat <- exp(predX1 %*% fit$coefficients[1:ncol(X1)])
+  tau_boot[b,] <- tauhat
+  
+  # Predictions of phi across range of DOY
+  DOYmn <- mean(covariate.DOY)
+  DOYsd <- sd(covariate.DOY)
+  predDOY <- seq(min(covariate.DOY),max(covariate.DOY),length.out = 500)
+  predDOYz <- (predDOY-DOYmn)/DOYsd
+  predX2 <- model.matrix(~predDOYz+I(predDOYz^2))
+  phihat <- exp(predX2 %*% fit$coefficients[(ncol(X1)+1):length(fit$coefficients)])
+  phi_boot[b,] <- phihat
+  
+  # Predictions of density across range of values of MAT
+  MATmn <- mean(covariate.MAT)
+  MATsd <- sd(covariate.MAT)
+  MATboot <- covariate.MAT[bootsamps]
+  zMATboot <- (MATboot - MATmn)/MATsd
+  dat <- data.frame(Y = apply(Yboot,1,sum,na.rm = TRUE),
+                    zMAT = zMATboot,
+                    log_off = log_offsets)
+  
+  glm1 <- glm(Y ~ zMAT + I(zMAT^2) + offset(log_off), family = poisson(link="log"), data = dat)
+  
+  predMAT <- seq(0,25,length.out = 500)
+  predMATz <- (predMAT-MATmn)/MATsd
+  pred_df <- data.frame(zMAT = predMATz,log_off = 0)
+  Dhat <- predict(glm1, newdata = pred_df, type = "response")
+  Dhat_boot[b,] <- Dhat
+  
+  
+  print(b)
+}
 
-tau_est <- exp(X1 %*% fit$coefficients[1:2])
+# Summarize results
 
-ggplot()+
-  geom_point(aes(x = covariate.FC,y=tau_est, col = "Estimate"))+
-  geom_line(aes(x = covariate.FC,y=tau, col = "Truth"))+
-  xlab("Percent forest cover")+
-  ylab("Tau")+
-  scale_color_manual(values=c("dodgerblue","black"), name = "")+
-  ggtitle("Predicted vs True Tau")+
+Dhat_mean <- apply(Dhat_boot,2,mean,na.rm = TRUE)
+Dhat_lcl <- apply(Dhat_boot,2,function(x)quantile(x,0.05,na.rm = TRUE))
+Dhat_ucl <- apply(Dhat_boot,2,function(x)quantile(x,0.95,na.rm = TRUE))
+
+Density_plot <- ggplot()+
+  geom_ribbon(aes(x = predMAT,ymin=Dhat_lcl,ymax=Dhat_ucl), 
+              fill = "dodgerblue",
+              col="transparent",
+              alpha = 0.5)+
+  geom_line(aes(x = predMAT,y = Dhat_mean),col="dodgerblue")+
+  geom_line(aes(x = covariate.MAT, y = Density))+
   theme_bw()
-
-# -----------------
-# Estimates of phi
-# -----------------
-
-phi_est <- exp(X2 %*% fit$coefficients[3:5])
-
-ggplot()+
-  geom_point(aes(x = covariate.DOY,y=phi_est, col = "Estimate"))+
-  geom_line(aes(x = covariate.DOY,y=phi, col = "Truth"))+
-  xlab("Day of year")+
-  ylab("Phi")+
-  scale_color_manual(values=c("dodgerblue","black"), name = "")+
-  ggtitle("Predicted vs True Phi")+
-  theme_bw()
-
-
-# ******************************************
-# Calculate detectability offsets for each survey in the full dataset (n = 2000)
-# ******************************************
-
-# Calculate survey-level offsets
-log_offsets <- calculate.offsets(fit,
-                                 rarray = rarray,
-                                 tarray = tarray,
-                                 X1 = X1,
-                                 X2 = X2)
-
-# ******************************************
-# Fit density model to point count data, using GLM with effect of mean annual temperature
-# ******************************************
-
-dat <- data.frame(Y = apply(Yarray,1,sum,na.rm = TRUE),
-                  zMAT = scale(covariate.MAT),
-                  log_off = log_offsets)
-
-glm1 <- glm(Y ~ zMAT + I(zMAT^2) + offset(log_off), family = poisson(link="log"), data = dat)
-
-# Predict density at each location
-pred_df <- dat
-pred_df$log_off <- 0 # Set offset to zero (i.e., remove detectability effects)
-Dhat <- predict(glm1, newdata = pred_df, type = "response")
-
-# Estimated density at each survey location (after correcting for detectability)
-ggplot()+
-  geom_point(aes(x = covariate.MAT,y=Dhat, col = "Estimate"))+
-  geom_line(aes(x = covariate.MAT,y=Density, col = "Truth"))+
-  xlab("Mean Annual Temperature")+
-  ylab("Density (birds/ha)")+
-  scale_color_manual(values=c("dodgerblue","black"), name = "")+
-  ggtitle("Predicted vs True Density")+
-  theme_bw()
+print(Density_plot)

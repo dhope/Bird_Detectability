@@ -1,5 +1,9 @@
+#' ---
+#' title: "CPP of Iles Multivariate Offsets"
+#' output: pdf_document
+#' ---
 # **************************************
-# Simulate 5000 point counts that were collected under 30 different protocols
+# Simulate 2000 point counts that were collected under 30 different protocols
 #
 # Survey-level density has a quadratic relationship with a 'mean annual temperature' covariate
 #
@@ -9,6 +13,7 @@
 
 library(tidyverse)
 library(ggpubr)
+library(Rcpp)
 
 rm(list=ls())
 
@@ -16,6 +21,9 @@ rm(list=ls())
 
 setwd("~/1_Work/Bird_Detectability/QPAD") # <- set to wherever scripts are stored
 
+#RcppEigen
+Rcpp::sourceCpp("nll_fun.cpp")
+source("cmulti_fit_joint_cpp.R")
 source("joint_fns.R")
 
 # ----------------------------------------------------------
@@ -23,7 +31,7 @@ source("joint_fns.R")
 # ----------------------------------------------------------
 
 # Number of point counts / survey locations to simulate
-nsurvey = 5000 
+nsurvey = 10000 
 
 # Mean annual temperature at each survey
 covariate.MAT <- runif(nsurvey,0,25)
@@ -33,7 +41,7 @@ A <- -0.01     # steepness
 k <- log(0.5)  # maximum of quadratic  
 h <- 10        # x location of vertex
 
-# Density at each survey location
+# Phi for each survey
 Density <- exp(A*(covariate.MAT-h)^2 + k)
 plot(Density~covariate.MAT)
 
@@ -142,7 +150,7 @@ for (k in 1:nsurvey){
     # Simulate bird cues, based on phi_true
     # ------------------------------------
     
-    cues <- matrix(NA, nrow=N, ncol = 150)
+    cues <- matrix(NA, nrow=N, ncol = 50)
     for (bird_id in 1:N) cues[bird_id,] <- cumsum(rexp(ncol(cues),phi_true))
     cues <- cues %>% 
       reshape2::melt() %>% 
@@ -165,7 +173,7 @@ for (k in 1:nsurvey){
     dat <- subset(cues,detected == 1)
     dat <- dat[!duplicated(dat$bird_id),]
     
-    
+  
     
     # Separate into distance and time bins
     dat$rint <- cut(dat$dist,c(0,rint))
@@ -179,7 +187,7 @@ for (k in 1:nsurvey){
     Yarray[k,1:nrint,1:ntint] <- 0
   }
   
-  print(k)
+  # print(k)
   
 }
 
@@ -195,26 +203,40 @@ fit <- cmulti.fit.joint(Yarray,
                         X2 = X2  # Design matrix for phi
 )
 end <- Sys.time()
-print(end-start) # 
+print(end-start) # 2.3 min
+
+start <- Sys.time()
+fitcpp <- cmulti_fit_joint(Yarray,
+                           rarray,
+                           tarray,
+                           X1 = X1, # Design matrix for tau
+                           X2 = X2  # Design matrix for phi
+)
+end <- Sys.time()
+print(end-start) # 2.3 min
 
 # ******************************************
 # Extract/inspect estimates
 # ******************************************
 
 fit$coefficients
+fitcpp$coefficients
 
 # -----------------
 # Estimates of tau
 # -----------------
 
 tau_est <- exp(X1 %*% fit$coefficients[1:2])
+tau_estcpp <- exp(X1 %*% fitcpp$coefficients[1:2])
 
 ggplot()+
   geom_point(aes(x = covariate.FC,y=tau_est, col = "Estimate"))+
+  geom_point(aes(x = covariate.FC,y=tau_estcpp, col = "Estimate CPP"),
+             alpha = 0.5, size =0.5)+
   geom_line(aes(x = covariate.FC,y=tau, col = "Truth"))+
   xlab("Percent forest cover")+
   ylab("Tau")+
-  scale_color_manual(values=c("dodgerblue","black"), name = "")+
+  scale_color_manual(values=c("dodgerblue",'grey', "black"), name = "")+
   ggtitle("Predicted vs True Tau")+
   theme_bw()
 
@@ -223,13 +245,16 @@ ggplot()+
 # -----------------
 
 phi_est <- exp(X2 %*% fit$coefficients[3:5])
+phi_est_cpp <- exp(X2 %*% fitcpp$coefficients[3:5])
 
 ggplot()+
   geom_point(aes(x = covariate.DOY,y=phi_est, col = "Estimate"))+
+  geom_point(aes(x = covariate.DOY,y=phi_est_cpp, col = "Estimate CPP"),
+             size = 0.5)+
   geom_line(aes(x = covariate.DOY,y=phi, col = "Truth"))+
   xlab("Day of year")+
   ylab("Phi")+
-  scale_color_manual(values=c("dodgerblue","black"), name = "")+
+  scale_color_manual(values=c("dodgerblue","grey","black"), name = "")+
   ggtitle("Predicted vs True Phi")+
   theme_bw()
 
@@ -245,27 +270,39 @@ log_offsets <- calculate.offsets(fit,
                                  X1 = X1,
                                  X2 = X2)
 
+log_offsetscpp <- calculate.offsets(fitcpp,
+                                    rarray = rarray,
+                                    tarray = tarray,
+                                    X1 = X1,
+                                    X2 = X2)
+
 # ******************************************
 # Fit density model to point count data, using GLM with effect of mean annual temperature
 # ******************************************
 
 dat <- data.frame(Y = apply(Yarray,1,sum,na.rm = TRUE),
                   zMAT = scale(covariate.MAT),
-                  log_off = log_offsets)
+                  log_off = log_offsets,
+                  log_offcpp = log_offsetscpp)
 
 glm1 <- glm(Y ~ zMAT + I(zMAT^2) + offset(log_off), family = poisson(link="log"), data = dat)
+glm2 <- glm(Y ~ zMAT + I(zMAT^2) + offset(log_offcpp), family = poisson(link="log"), data = dat)
 
 # Predict density at each location
 pred_df <- dat
 pred_df$log_off <- 0 # Set offset to zero (i.e., remove detectability effects)
+pred_df$log_offcpp <- 0 # Set offset to zero (i.e., remove detectability effects)
 Dhat <- predict(glm1, newdata = pred_df, type = "response")
+Dhatcpp <- predict(glm2, newdata = pred_df, type = "response")
 
 # Estimated density at each survey location (after correcting for detectability)
 ggplot()+
   geom_point(aes(x = covariate.MAT,y=Dhat, col = "Estimate"))+
+  geom_point(aes(x = covariate.MAT,y=Dhatcpp, col = "Estimate Cpp"),
+             size = 0.2)+
   geom_line(aes(x = covariate.MAT,y=Density, col = "Truth"))+
   xlab("Mean Annual Temperature")+
   ylab("Density (birds/ha)")+
-  scale_color_manual(values=c("dodgerblue","black"), name = "")+
+  scale_color_manual(values=c("dodgerblue",'grey',"black"), name = "")+
   ggtitle("Predicted vs True Density")+
   theme_bw()

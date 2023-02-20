@@ -6,22 +6,32 @@
 
 library(tidyverse)
 library(ggpubr)
+library(detect)
+library(ggthemes)
 
 rm(list=ls())
-
 
 setwd("~/1_Work/Bird_Detectability/QPAD") # <- set to wherever scripts are stored
 source("joint_fns.R")
 
-result_df <- expand.grid(sim_rep = 1:200,
-                         tau = c(0.5,1,1.5),
-                         phi = c(0.2,1,5),
-                         Density = c(0.1,0.5,1),
-                         Ysum = NA,
-                         tau_est = NA,
-                         phi_est = NA,
-                         log_offset = NA,
-                         Density_est = NA)
+result_df <- expand.grid(sim_rep = 1:100,
+                         tau = seq(0.2,2,0.4),
+                         phi = c(0.1,0.5,2.5),
+                         Density = c(0.1,0.5,2.5),
+                         
+                         tau_est_joint = NA,
+                         phi_est_joint = NA,
+                         log_offset_joint = NA,
+                         Density_est_joint = NA,
+                         
+                         tau_est_indep = NA,
+                         phi_est_indep = NA,
+                         log_offset_indep = NA,
+                         Density_est_indep = NA
+                         
+                         
+                         
+)
 
 for (sim_rep in 1:nrow(result_df)){
   
@@ -136,8 +146,10 @@ for (sim_rep in 1:nrow(result_df)){
     
   }
   
+  result_df$Ysum[sim_rep] <- sum(Yarray)
+  
   # ******************************************
-  # FIT MODEL TO SIMULATED DATA (only first 1000 point counts)
+  # FIT JOINT MODEL AND ESTIMATE DENSITY
   # ******************************************
   
   start <- Sys.time()
@@ -150,51 +162,79 @@ for (sim_rep in 1:nrow(result_df)){
   end <- Sys.time()
   print(end-start)
   
-  # ******************************************
-  # Extract/inspect estimates
-  # ******************************************
-  
   # Calculate survey-level offsets
   log_offset <- calculate.offsets(fit,
-                                   rarray = rarray,
-                                   tarray = tarray,
-                                   X1 = NULL,
-                                   X2 = NULL)
+                                  rarray = rarray,
+                                  tarray = tarray,
+                                  X1 = NULL,
+                                  X2 = NULL)
   
   # Estimates
-  result_df$Ysum[sim_rep] <- sum(Yarray)
-  result_df$tau_est[sim_rep] <- exp(fit$coefficients[1])
-  result_df$phi_est[sim_rep] <- exp(fit$coefficients[2])
-  result_df$log_offset[sim_rep] <- log_offset
+  result_df$tau_est_joint[sim_rep] <- exp(fit$coefficients[1])
+  result_df$phi_est_joint[sim_rep] <- exp(fit$coefficients[2])
+  result_df$log_offset_joint[sim_rep] <- log_offset
+  result_df$Density_est_joint[sim_rep] <- (sum(Yarray)/exp(log_offset))/1000
   
-  result_df$Density_est[sim_rep] <- sum(Yarray)/exp(log_offset)
+  # ******************************************
+  # FIT INDEPENDENT DISTANCE AND REMOVAL MODELS
+  # ******************************************
+  tryCatch({
+    Y_distance <- apply(Yarray,2,sum) %>% matrix(.,1)
+    fit.q <- cmulti.fit(Y_distance,rarray, type = "dis")
+    tau_indep = exp(fit.q$coefficients)
+    
+    Y_removal <- apply(Yarray,3,sum) %>% matrix(.,1)
+    fit.p <- cmulti.fit(Y_removal,tarray, type = "rem")
+    phi_indep = exp(fit.p$coefficients)
+    
+    # Estimate density
+    A_hat = pi*tau_indep^2
+    p_hat = 1-exp(-max(tarray)*phi_indep)
+    D_hat <- sum(Yarray)/(A_hat*p_hat)
+    
+    result_df$tau_est_indep[sim_rep] <- tau_indep
+    result_df$phi_est_indep[sim_rep] <- phi_indep
+    result_df$Density_est_indep[sim_rep] <- D_hat/1000
+  },
+  error = function(e){
+    
+  }
+  )
   print(sim_rep)
+  
 }
 
+result_df$tau_label = paste0("Tau = ",result_df$tau)
+result_df$phi_label = paste0("Phi = ",result_df$phi)
+result_df$Density_label = paste0("True Density = ",result_df$Density)
+save(result_df,file="results/QPAD_joint_sim3.R")
 
-# -------------------------------------
-# Plot results
-# -------------------------------------
+median_results <- result_df %>%
+  group_by(tau_label,phi_label,Density_label) %>%
+  summarize_all(median,na.rm=TRUE)
 
-result_df$tau_label = paste0("tau = ",result_df$tau)
-result_df$phi_label = paste0("phi = ",result_df$phi)
+result_plot <- ggplot(median_results)+
+  geom_hline(yintercept=0,col="white")+
+  geom_line(aes(x = tau, y = Density_est_joint, 
+                col = "Joint", 
+                linetype = "Joint"), size = 1)+
+  geom_line(aes(x = tau, y = Density_est_indep, 
+                col = "Indep", 
+                linetype = "Indep"), size = 1)+
+  geom_hline(aes(yintercept = Density, 
+                 col = "Truth", 
+                 linetype = "Truth"), size = 1)+
+  scale_color_manual(values=c("orangered","dodgerblue","black"),name="Model")+
+  scale_linetype_manual(values=c(1,1,3),name="Model")+
+  ylab("Density Estimate")+
+  xlab("Tau")+
+  theme_bw()+
+  
+  facet_grid(Density_label~phi_label, scales = "free")+
+  labs(title='Simulation Results',
+       subtitle='Median across 100 repeated simulations')
+result_plot
 
-# Confirms that estimates of tau and phi are highly correlated when tau is low
-ggplot(data = result_df)+
-  geom_point(aes(x = tau_est, y = phi_est))+
-  facet_wrap(. ~phi_label+tau_label, scales = "free")+
-  theme_bw()
-
-# Is density correlated with phi estimate?
-ggplot(data = result_df)+
-  geom_hline(yintercept = Density)+
-  geom_point(aes(x = phi_est, y = Density_est))+
-  facet_wrap(. ~phi_label+tau_label, scales = "free")+
-  theme_bw()
-
-# Is density correlated with tau estimate?
-ggplot(data = result_df)+
-  geom_hline(yintercept = Density)+
-  geom_point(aes(x = tau_est, y = Density_est))+
-  facet_wrap(. ~phi_label+tau_label, scales = "free")+
-  theme_bw()
+png("results/QPAD_joint_sim3.png", height=6,width=6,units="in",res=600)
+print(result_plot)
+dev.off()
