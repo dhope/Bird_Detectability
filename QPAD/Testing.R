@@ -1,4 +1,4 @@
-list2env(readr::read_rds("dev/testingdat.rds"), envir = environment())
+list2env(readr::read_rds("testingdat.rds"), envir = environment())
 Yarray_x = aperm(Yarray, c(2,3,1))
 nlimit <- c(.Machine$double.xmin, .Machine$double.xmax)^(1/3)
 Rcpp::sourceCpp("joing_funs_dh_testing.cpp")

@@ -17,11 +17,11 @@ library(ggpubr)
 # rm(list=ls())
 
 set.seed(999)
-
+library(IlesShowUSomething)
 # setwd("~/1_Work/Bird_Detectability/QPAD") # <- set to wherever scripts are stored
-Rcpp::sourceCpp("nll_fun.cpp")
-source("cmulti_fit_joint_cpp.R")
-source("joint_fns.R")
+# Rcpp::sourceCpp("nll_fun.cpp")
+# source("cmulti_fit_joint_cpp.R")
+# source("joint_fns.R")
 
 # ----------------------------------------------------------
 # Specify density relationship
@@ -194,7 +194,7 @@ X1_fit <- X1[1:1000,]
 X2_fit <- X2[1:1000,]
 
 start <- Sys.time()
-fit <- cmulti.fit.joint(Yarray_fit,
+fit <- cmulti_fit_joint_slow(Yarray_fit,
                         rarray_fit,
                         tarray_fit,
                         X1 = X1_fit, # Design matrix for tau
