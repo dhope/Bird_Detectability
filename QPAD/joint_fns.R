@@ -143,7 +143,7 @@ cmulti.fit.joint <- function (Yarray, # Array with dimensions (nsurvey x nrint x
     
     # browser()
     nll <- -sum(nll)
-    if (nll %in% c(NA, NaN, Inf, -Inf)) browser()#nlimit[2] 
+    if (nll %in% c(NA, NaN, Inf, -Inf)) nlimit[2] 
     else nll
   }
   
