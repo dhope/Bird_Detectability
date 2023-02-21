@@ -13,18 +13,18 @@
 
 library(tidyverse)
 library(ggpubr)
-library(Rcpp)
+library(IlesShowUSomething)
 
 rm(list=ls())
 
 #set.seed(999)
 
-setwd("~/1_Work/Bird_Detectability/QPAD") # <- set to wherever scripts are stored
+# setwd("~/1_Work/Bird_Detectability/QPAD") # <- set to wherever scripts are stored
 
 #RcppEigen
-Rcpp::sourceCpp("nll_fun.cpp")
-source("cmulti_fit_joint_cpp.R")
-source("joint_fns.R")
+# Rcpp::sourceCpp("nll_fun.cpp")
+# source("cmulti_fit_joint_cpp.R")
+# source("joint_fns.R")
 
 # ----------------------------------------------------------
 # Specify density relationship
@@ -196,7 +196,7 @@ for (k in 1:nsurvey){
 # ******************************************
 
 start <- Sys.time()
-fit <- cmulti.fit.joint(Yarray,
+fit <- cmulti_fit_joint_slow(Yarray,
                         rarray,
                         tarray,
                         X1 = X1, # Design matrix for tau
@@ -264,13 +264,13 @@ ggplot()+
 # ******************************************
 
 # Calculate survey-level offsets
-log_offsets <- calculate.offsets(fit,
+log_offsets <- calculate_offsets(fit,
                                  rarray = rarray,
                                  tarray = tarray,
                                  X1 = X1,
                                  X2 = X2)
 
-log_offsetscpp <- calculate.offsets(fitcpp,
+log_offsetscpp <- calculate_offsets(fitcpp,
                                     rarray = rarray,
                                     tarray = tarray,
                                     X1 = X1,
@@ -306,3 +306,5 @@ ggplot()+
   scale_color_manual(values=c("dodgerblue",'grey',"black"), name = "")+
   ggtitle("Predicted vs True Density")+
   theme_bw()
+
+

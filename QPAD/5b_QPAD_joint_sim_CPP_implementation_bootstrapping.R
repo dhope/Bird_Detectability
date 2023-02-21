@@ -13,17 +13,17 @@
 
 library(tidyverse)
 library(ggpubr)
-library(Rcpp)
+library(IlesShowUSomething)
 
-rm(list=ls())
+# rm(list=ls())
 
-#set.seed(999)
+set.seed(999)
 
-setwd("~/1_Work/Bird_Detectability/QPAD") # <- set to wherever scripts are stored
+# setwd("~/1_Work/Bird_Detectability/QPAD") # <- set to wherever scripts are stored
 
-Rcpp::sourceCpp("nll_fun.cpp")
-source("cmulti_fit_joint_cpp.R")
-source("joint_fns.R")
+# Rcpp::sourceCpp("nll_fun.cpp")
+# source("cmulti_fit_joint_cpp.R")
+# source("joint_fns.R")
 
 # ----------------------------------------------------------
 # Specify density relationship
@@ -200,7 +200,13 @@ sum(Ysum>0)
 bootreps <- 100
 Dhat_boot <- tau_boot <- phi_boot <- matrix(NA,nrow=bootreps,ncol=500)
 
-for (b in 1:bootreps){
+load("results/CurrentEnv.RData")
+bootsamps <- read_rds("results/bootstrapsample_14.rds")
+bootsamps <- read_rds("results/bootstrapsample_1.rds")
+
+# for (b in 1:bootreps){
+  
+run_bootstrap <- function(b){
 
   bootsamps <- sample(1:nsurvey,nsurvey,replace=TRUE)
   Yboot <- Yarray[bootsamps,,]
@@ -208,7 +214,7 @@ for (b in 1:bootreps){
   tboot <- tarray[bootsamps,]
   X1boot <- X1[bootsamps,]
   X2boot <- X2[bootsamps,]
-  
+  write_rds(bootsamps, glue::glue("results/bootstrapsample_{b}.rds"))
   start <- Sys.time()
   fit <- cmulti_fit_joint(Yboot,
                           rboot,
@@ -218,7 +224,7 @@ for (b in 1:bootreps){
   )
   end <- Sys.time()
   print(end-start)
-  log_offsets <- calculate.offsets(fit,
+  log_offsets <- calculate_offsets(fit,
                                    rarray = rboot,
                                    tarray = tboot,
                                    X1 = X1boot,
@@ -257,11 +263,16 @@ for (b in 1:bootreps){
   predMATz <- (predMAT-MATmn)/MATsd
   pred_df <- data.frame(zMAT = predMATz,log_off = 0)
   Dhat <- predict(glm1, newdata = pred_df, type = "response")
-  Dhat_boot[b,] <- Dhat
+  
+  return(Dhat)
+  # Dhat_boot[b,] <- Dhat
   
   
-  print(b)
+  # print(b)
 }
+
+
+boot_res <- map(1:bootreps, run_bootstrap)
 
 # Summarize results
 
