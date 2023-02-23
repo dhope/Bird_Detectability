@@ -6,3 +6,5 @@ QPAD/empirical/OVEN.png
 QPAD/empirical/BLPWdetectionhistories.xlsx
 .Rproj.user
 QPAD/.Rhistory
+*.rds
+*.RData

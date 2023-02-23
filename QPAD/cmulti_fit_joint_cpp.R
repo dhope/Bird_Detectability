@@ -25,6 +25,7 @@ cmulti_fit_joint <- function (Yarray, # Array with dimensions (nsurvey x nrint x
     Yarray <- Yarray[Ykeep, , ]
     rarray<- rarray[Ykeep, ]
     tarray<- tarray[Ykeep, ]
+    Ysum <- Ysum[Ykeep]
   }
   nsurvey <- dim(Yarray)[1] # Number of surveys
   nrint <- apply(rarray,1,function(x)length(na.omit(x))) # Number of distance bins for each point count
@@ -69,10 +70,18 @@ cmulti_fit_joint <- function (Yarray, # Array with dimensions (nsurvey x nrint x
   # browser()
   nlimit <- c(.Machine$double.xmin, .Machine$double.xmax)^(1/3)
   Yarray_x = aperm(Yarray, c(2,3,1))
+  browser()
+  itmes_ <- ls()
+  for (i in itmes_) {
+    x <- dim(get(i) )
+    print(glue::glue("{i}: {ifelse(is.null(x), length(get(i)), x)}"))
+  }
   res <- optim(inits, nll_fun, method = method, hessian = TRUE,
                X1=X1, X2=X2, tau_params=tau_params, nsurvey=nsurvey, 
                Yarray = Yarray_x,tarray= tarray, rarray=rarray, 
                nrint= nrint, ntint= ntint, max_r= max_r, Ysum=Ysum,nlimit= nlimit)
+  #, control = list(trace = 2))
+  
   
   ## robust matrix inversion (from detect pacakge)
   .solvenear <- function(x) {
